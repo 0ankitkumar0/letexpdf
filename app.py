@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 import zipfile
 
@@ -31,6 +32,7 @@ app = Flask(__name__, template_folder="templates")
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 ALLOWED_EXTENSIONS = {".zip"}
 COMPILE_TIMEOUT = 120  # seconds
+JOB_TTL = 1800  # seconds (30 min) — completed jobs are purged after this
 
 # In-memory job store  {job_id: {status, progress, events[], result}}
 _jobs: dict[str, dict] = {}
@@ -275,9 +277,27 @@ def _compile_worker(job_id: str, tmp_dir: str, tex_path: str):
 # Routes
 # ---------------------------------------------------------------------------
 
+def _purge_expired_jobs():
+    """Remove finished jobs older than JOB_TTL to prevent memory leaks."""
+    now = time.time()
+    with _jobs_lock:
+        expired = [
+            jid for jid, job in _jobs.items()
+            if job["status"] in ("done", "failed")
+            and now - job.get("created_at", now) > JOB_TTL
+        ]
+        for jid in expired:
+            del _jobs[jid]
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/compile", methods=["POST"])
@@ -325,12 +345,14 @@ def compile_upload():
         return jsonify({"error": "No .tex file found in the archive."}), 400
 
     # --- register job & start worker ---
+    _purge_expired_jobs()
     with _jobs_lock:
         _jobs[job_id] = {
             "status": "running",
             "events": [],
             "pdf_bytes": None,
             "pdf_name": None,
+            "created_at": time.time(),
         }
 
     thread = threading.Thread(

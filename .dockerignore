@@ -1,0 +1,8 @@
+.git
+.gitignore
+README.md
+test_compile.py
+__pycache__
+*.pyc
+.dockerignore
+Dockerfile

@@ -89,6 +89,14 @@
           <span class="font-semibold text-sm">PDF compiled successfully!</span>
         </div>
         <p id="successMeta" class="text-xs text-emerald-600"></p>
+        <!-- Download button -->
+        <a id="downloadBtn" href="#" download
+           class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors duration-200">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+          </svg>
+          Download PDF
+        </a>
         <!-- Warnings (if any) -->
         <div id="warningBox" class="hidden mt-2 rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-1 max-h-40 overflow-y-auto">
           <p class="text-xs font-semibold text-amber-700 uppercase">Warnings</p>
@@ -138,6 +146,7 @@
     const compileLabel  = document.getElementById('compileLabel');
     const successPanel  = document.getElementById('successPanel');
     const successMeta   = document.getElementById('successMeta');
+    const downloadBtn   = document.getElementById('downloadBtn');
     const warningBox    = document.getElementById('warningBox');
     const warningList   = document.getElementById('warningList');
     const errorPanel    = document.getElementById('errorPanel');
@@ -341,6 +350,11 @@
         successPanel.classList.remove('hidden');
         successMeta.textContent = `${d.pdf_name} — ${(d.pdf_size / 1024).toFixed(1)} KB`;
 
+        // Set up the download button
+        const dlUrl = `/download/${jobId}`;
+        downloadBtn.href = dlUrl;
+        downloadBtn.setAttribute('download', d.pdf_name);
+
         if (d.warnings && d.warnings.length) {
           warningBox.classList.remove('hidden');
           d.warnings.forEach(w => {
@@ -350,18 +364,13 @@
           });
         }
 
-        fetch(`/download/${jobId}`)
-          .then(r => r.blob())
-          .then(blob => {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = d.pdf_name;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-          });
+        // Auto-download the PDF
+        const a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = d.pdf_name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
 
         setLoading(false);
       });

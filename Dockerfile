@@ -38,6 +38,9 @@ ENV PATH="/app/venv/bin:$PATH"
 
 EXPOSE 5000
 
-# Run with a production-ready server (Werkzeug's built-in server is fine for
-# moderate loads behind a reverse proxy; swap for gunicorn if needed).
-CMD ["python3", "app.py"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
+
+# Production WSGI server — single worker + threads to keep the in-memory
+# job store consistent.  Adjust --threads for expected concurrency.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "app:app"]
