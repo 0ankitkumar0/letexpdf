@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LaTeX Compiler</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .drop-active { border-color: #818cf8 !important; background: #eef2ff !important; }
+    @keyframes pulse-bar { 0%,100%{opacity:.6} 50%{opacity:1} }
+    .pulse-bar { animation: pulse-bar 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+
+  <div class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+
+    <!-- ── Header ──────────────────────────────────── -->
+    <div class="px-8 pt-8 pb-4 text-center space-y-1">
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">LaTeX &rarr; PDF</h1>
+      <p class="text-slate-500 text-sm">Upload a <span class="font-mono bg-slate-100 px-1 rounded">.zip</span> of your LaTeX project and get a compiled PDF back.</p>
+    </div>
+
+    <div class="px-8 pb-8 space-y-5">
+
+      <!-- ── Upload form ───────────────────────────── -->
+      <form id="uploadForm" class="space-y-4">
+
+        <!-- Drop zone -->
+        <label id="dropZone" for="fileInput"
+               class="relative flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer
+                      hover:border-indigo-400 hover:bg-indigo-50/60 transition-all duration-200">
+          <svg id="dropIcon" class="w-10 h-10 text-slate-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none"
+               viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+          </svg>
+          <p id="dropLabel" class="text-sm text-slate-500">
+            <span class="font-semibold text-indigo-600">Click to browse</span> or drag &amp; drop your .zip here
+          </p>
+          <input id="fileInput" name="file" type="file" accept=".zip" class="hidden" />
+        </label>
+
+        <!-- Upload progress bar (hidden by default) -->
+        <div id="uploadProgress" class="hidden">
+          <div class="flex justify-between text-xs text-slate-500 mb-1">
+            <span>Uploading…</span>
+            <span id="uploadPct">0%</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+            <div id="uploadBar" class="bg-indigo-500 h-2 rounded-full transition-all duration-200" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button id="submitBtn" type="submit"
+                class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl
+                       transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled>
+          <svg id="spinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg"
+               fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+          </svg>
+          <span id="btnText">Compile PDF</span>
+        </button>
+      </form>
+
+      <!-- ── Progress tracker ──────────────────────── -->
+      <div id="progressPanel" class="hidden space-y-3">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wide">Compilation Progress</h2>
+
+        <!-- Step list -->
+        <div id="stepList" class="space-y-2"></div>
+
+        <!-- Overall bar -->
+        <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+          <div id="compileBar" class="bg-indigo-500 h-2.5 rounded-full transition-all duration-300 pulse-bar" style="width:0%"></div>
+        </div>
+        <p id="compileLabel" class="text-xs text-slate-500 text-center">Starting…</p>
+      </div>
+
+      <!-- ── Success panel ─────────────────────────── -->
+      <div id="successPanel" class="hidden rounded-xl bg-emerald-50 border border-emerald-200 p-5 space-y-3">
+        <div class="flex items-center gap-2 text-emerald-700">
+          <svg class="w-6 h-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+          </svg>
+          <span class="font-semibold text-sm">PDF compiled successfully!</span>
+        </div>
+        <p id="successMeta" class="text-xs text-emerald-600"></p>
+        <!-- Warnings (if any) -->
+        <div id="warningBox" class="hidden mt-2 rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-1 max-h-40 overflow-y-auto">
+          <p class="text-xs font-semibold text-amber-700 uppercase">Warnings</p>
+          <ul id="warningList" class="text-xs text-amber-800 list-disc pl-4 space-y-0.5"></ul>
+        </div>
+      </div>
+
+      <!-- ── Error panel ───────────────────────────── -->
+      <div id="errorPanel" class="hidden rounded-xl bg-red-50 border border-red-200 p-5 space-y-4">
+        <div class="flex items-center gap-2 text-red-700">
+          <svg class="w-6 h-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+          </svg>
+          <span id="errorTitle" class="font-semibold text-sm">Compilation failed</span>
+        </div>
+
+        <!-- Parsed errors -->
+        <div id="errorCards" class="space-y-2"></div>
+
+        <!-- Raw log toggle -->
+        <details class="group">
+          <summary class="cursor-pointer text-xs text-red-500 hover:text-red-700 font-medium select-none">
+            Show full LaTeX log ▾
+          </summary>
+          <pre id="rawLog" class="mt-2 p-3 bg-red-100/60 rounded-lg text-[11px] text-red-900 max-h-64 overflow-auto whitespace-pre-wrap break-words"></pre>
+        </details>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ── DOM refs ──────────────────────────────────────
+    const form          = document.getElementById('uploadForm');
+    const fileInput     = document.getElementById('fileInput');
+    const dropZone      = document.getElementById('dropZone');
+    const dropLabel     = document.getElementById('dropLabel');
+    const submitBtn     = document.getElementById('submitBtn');
+    const btnText       = document.getElementById('btnText');
+    const spinner       = document.getElementById('spinner');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadPct     = document.getElementById('uploadPct');
+    const uploadBar     = document.getElementById('uploadBar');
+    const progressPanel = document.getElementById('progressPanel');
+    const stepList      = document.getElementById('stepList');
+    const compileBar    = document.getElementById('compileBar');
+    const compileLabel  = document.getElementById('compileLabel');
+    const successPanel  = document.getElementById('successPanel');
+    const successMeta   = document.getElementById('successMeta');
+    const warningBox    = document.getElementById('warningBox');
+    const warningList   = document.getElementById('warningList');
+    const errorPanel    = document.getElementById('errorPanel');
+    const errorTitle    = document.getElementById('errorTitle');
+    const errorCards    = document.getElementById('errorCards');
+    const rawLog        = document.getElementById('rawLog');
+
+    // ── File selection ────────────────────────────────
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) {
+        dropLabel.textContent = fileInput.files[0].name;
+        submitBtn.disabled = false;
+      }
+    });
+
+    // ── Drag & drop ───────────────────────────────────
+    ['dragenter','dragover'].forEach(ev =>
+      dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drop-active'); }));
+    ['dragleave','drop'].forEach(ev =>
+      dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drop-active'); }));
+    dropZone.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        dropLabel.textContent = e.dataTransfer.files[0].name;
+        submitBtn.disabled = false;
+      }
+    });
+
+    // ── Helpers ───────────────────────────────────────
+    function hideAll() {
+      [uploadProgress, progressPanel, successPanel, errorPanel].forEach(el => el.classList.add('hidden'));
+      stepList.innerHTML = '';
+      errorCards.innerHTML = '';
+      warningList.innerHTML = '';
+      warningBox.classList.add('hidden');
+      compileBar.style.width = '0%';
+      compileBar.classList.add('bg-indigo-500', 'pulse-bar');
+      compileBar.classList.remove('bg-red-500');
+      compileLabel.textContent = 'Starting…';
+    }
+
+    function setLoading(on) {
+      submitBtn.disabled = on;
+      spinner.classList.toggle('hidden', !on);
+      btnText.textContent = on ? 'Compiling…' : 'Compile PDF';
+    }
+
+    function makeStepEl(label, state) {
+      const colors = {
+        pending: 'bg-slate-200 text-slate-400',
+        active:  'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-400',
+        done:    'bg-emerald-100 text-emerald-700',
+        error:   'bg-red-100 text-red-700',
+      };
+      const icons = {
+        pending: `<svg class="w-4 h-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>`,
+        active:  `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>`,
+        done:    `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>`,
+        error:   `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>`,
+      };
+      const div = document.createElement('div');
+      div.className = `flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${colors[state]}`;
+      div.innerHTML = `${icons[state]} <span>${label}</span>`;
+      return div;
+    }
+
+    function renderErrorCard(err) {
+      const card = document.createElement('div');
+      const isErr = err.type === 'error';
+      card.className = `rounded-lg p-3 text-sm space-y-1 ${isErr ? 'bg-red-100 border border-red-300' : 'bg-amber-50 border border-amber-200'}`;
+
+      let html = `<div class="flex items-start gap-2">`;
+      if (isErr) {
+        html += `<span class="font-bold text-red-600 flex-shrink-0">&#10006; Error</span>`;
+      } else {
+        html += `<span class="font-bold text-amber-600 flex-shrink-0">&#9888; Warning</span>`;
+      }
+      if (err.line) {
+        html += `<span class="ml-auto text-xs font-mono ${isErr ? 'text-red-500 bg-red-200' : 'text-amber-600 bg-amber-100'} px-1.5 py-0.5 rounded">line ${err.line}</span>`;
+      }
+      html += `</div>`;
+      html += `<p class="font-mono text-xs ${isErr ? 'text-red-800' : 'text-amber-800'}">${escHtml(err.message)}</p>`;
+      if (err.context) {
+        html += `<pre class="font-mono text-[11px] ${isErr ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'} p-2 rounded mt-1 overflow-x-auto">${escHtml(err.context)}</pre>`;
+      }
+      card.innerHTML = html;
+      return card;
+    }
+
+    function escHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ── Submit ────────────────────────────────────────
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!fileInput.files.length) return;
+
+      hideAll();
+      setLoading(true);
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      let jobId;
+      try {
+        jobId = await uploadFile(formData);
+      } catch (err) {
+        showUploadError(typeof err === 'string' ? err : err.message);
+        setLoading(false);
+        return;
+      }
+
+      uploadProgress.classList.add('hidden');
+      progressPanel.classList.remove('hidden');
+      listenProgress(jobId);
+    });
+
+    function uploadFile(formData) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/compile');
+
+        uploadProgress.classList.remove('hidden');
+
+        xhr.upload.addEventListener('progress', e => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            uploadPct.textContent = pct + '%';
+            uploadBar.style.width = pct + '%';
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          uploadBar.style.width = '100%';
+          uploadPct.textContent = '100%';
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300 && data.job_id) {
+              resolve(data.job_id);
+            } else {
+              reject(data.error || 'Upload failed');
+            }
+          } catch {
+            reject('Invalid server response');
+          }
+        });
+
+        xhr.addEventListener('error', () => reject('Network error'));
+        xhr.addEventListener('timeout', () => reject('Upload timed out'));
+        xhr.timeout = 60000;
+        xhr.send(formData);
+      });
+    }
+
+    function listenProgress(jobId) {
+      const steps = {};
+      let stepOrder = [];
+      const es = new EventSource(`/progress/${jobId}`);
+
+      es.addEventListener('progress', e => {
+        const d = JSON.parse(e.data);
+
+        if (!steps[d.step]) {
+          stepOrder.forEach(s => {
+            if (steps[s]._state === 'active') {
+              const el = makeStepEl(s, 'done');
+              el._state = 'done';
+              steps[s].replaceWith(el);
+              steps[s] = el;
+            }
+          });
+          const el = makeStepEl(d.step, 'active');
+          el._state = 'active';
+          stepList.appendChild(el);
+          steps[d.step] = el;
+          stepOrder.push(d.step);
+        }
+
+        const pct = Math.round(((d.current - 1) / d.total) * 100 + (100 / d.total) * 0.5);
+        compileBar.style.width = Math.min(pct, 95) + '%';
+        compileLabel.textContent = `Step ${d.current} of ${d.total}: ${d.step}`;
+      });
+
+      es.addEventListener('done', e => {
+        es.close();
+        const d = JSON.parse(e.data);
+
+        stepOrder.forEach(s => {
+          const el = makeStepEl(s, 'done');
+          el._state = 'done';
+          steps[s].replaceWith(el);
+          steps[s] = el;
+        });
+        compileBar.style.width = '100%';
+        compileBar.classList.remove('pulse-bar');
+        compileLabel.textContent = 'Complete!';
+
+        successPanel.classList.remove('hidden');
+        successMeta.textContent = `${d.pdf_name} — ${(d.pdf_size / 1024).toFixed(1)} KB`;
+
+        if (d.warnings && d.warnings.length) {
+          warningBox.classList.remove('hidden');
+          d.warnings.forEach(w => {
+            const li = document.createElement('li');
+            li.textContent = w.message + (w.line ? ` (line ${w.line})` : '');
+            warningList.appendChild(li);
+          });
+        }
+
+        fetch(`/download/${jobId}`)
+          .then(r => r.blob())
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = d.pdf_name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          });
+
+        setLoading(false);
+      });
+
+      es.addEventListener('error', e => {
+        if (e.data) {
+          es.close();
+          const d = JSON.parse(e.data);
+          showCompileError(d, steps, stepOrder);
+          setLoading(false);
+          return;
+        }
+        if (es.readyState === EventSource.CLOSED) return;
+        setTimeout(() => {
+          if (es.readyState !== EventSource.CLOSED) {
+            es.close();
+            if (successPanel.classList.contains('hidden') && errorPanel.classList.contains('hidden')) {
+              showUploadError('Connection to server lost.');
+              setLoading(false);
+            }
+          }
+        }, 5000);
+      });
+    }
+
+    function showCompileError(d, steps, stepOrder) {
+      if (steps && stepOrder) {
+        stepOrder.forEach(s => {
+          if (steps[s]._state === 'active') {
+            const el = makeStepEl(s, 'error');
+            el._state = 'error';
+            steps[s].replaceWith(el);
+            steps[s] = el;
+          }
+        });
+      }
+      compileBar.classList.remove('pulse-bar');
+      compileBar.classList.remove('bg-indigo-500');
+      compileBar.classList.add('bg-red-500');
+
+      errorPanel.classList.remove('hidden');
+      errorTitle.textContent = d.message || 'Compilation failed';
+
+      if (d.errors && d.errors.length) {
+        d.errors.forEach(err => errorCards.appendChild(renderErrorCard(err)));
+      } else if (!d.log) {
+        const p = document.createElement('p');
+        p.className = 'text-sm text-red-700';
+        p.textContent = d.message;
+        errorCards.appendChild(p);
+      }
+
+      if (d.log) {
+        rawLog.textContent = d.log;
+      } else {
+        rawLog.textContent = '(no log available)';
+      }
+    }
+
+    function showUploadError(msg) {
+      errorPanel.classList.remove('hidden');
+      errorTitle.textContent = msg;
+      rawLog.textContent = '';
+    }
+  </script>
+</body>
+</html>
